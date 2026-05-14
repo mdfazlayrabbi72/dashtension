@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Dashtension</title>
+    <link rel="stylesheet" href="newtab.css" />
+  </head>
+  <body>
+    <div class="backdrop"></div>
+    <main class="dashboard">
+      <header class="panel">
+        <h1>Dashtension</h1>
+        <p>Dark New Tab dashboard</p>
+      </header>
+
+      <section class="panel" aria-labelledby="links-heading">
+        <h2 id="links-heading">Links</h2>
+        <form id="link-form" class="link-form">
+          <input id="link-name" type="text" placeholder="Label" required />
+          <input id="link-url" type="url" placeholder="https://example.com" required />
+          <button type="submit">Add</button>
+        </form>
+        <ul id="links-list" class="links-list"></ul>
+      </section>
+
+      <section class="panel" aria-labelledby="dashboard-heading">
+        <h2 id="dashboard-heading">Dashboard</h2>
+        <div id="dashboard-grid" class="dashboard-grid"></div>
+      </section>
+
+      <section class="panel" aria-labelledby="pomodoro-heading">
+        <h2 id="pomodoro-heading">Pomodoro</h2>
+        <div class="timer-settings">
+          <label>
+            Work (min)
+            <input id="work-minutes" type="number" min="1" max="180" />
+          </label>
+          <label>
+            Break (min)
+            <input id="break-minutes" type="number" min="1" max="60" />
+          </label>
+          <button id="save-timer-settings" type="button">Save</button>
+        </div>
+        <p id="timer-mode" class="timer-mode">Work</p>
+        <p id="timer-display" class="timer-display">25:00</p>
+        <div class="timer-controls">
+          <button id="timer-start" type="button">Start</button>
+          <button id="timer-pause" type="button">Pause</button>
+          <button id="timer-reset" type="button">Reset</button>
+        </div>
+      </section>
+
+      <section class="panel" aria-labelledby="notes-heading">
+        <h2 id="notes-heading">Notes</h2>
+        <textarea id="notes" placeholder="Write your notes here..."></textarea>
+      </section>
+    </main>
+
+    <script src="newtab.js"></script>
+  </body>
+</html>
