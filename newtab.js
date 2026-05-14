@@ -19,6 +19,9 @@ const DEFAULT_BACKGROUND_SETTINGS = {
   intervalMinutes: 5
 };
 
+const MS_PER_SECOND = 1_000;
+const MS_PER_MINUTE = 60_000;
+
 const BACKGROUND_SOURCES = [
   (seed) => `https://source.unsplash.com/1920x1080/?dark,night,abstract&sig=${seed}`,
   (seed) => `https://picsum.photos/1920/1080?random=${seed}`
@@ -316,7 +319,7 @@ function startTimer({ force = false } = {}) {
     }
 
     renderTimer();
-  }, 1000);
+  }, MS_PER_SECOND);
 }
 
 function stopTimer() {
@@ -353,7 +356,7 @@ function startBackgroundRotation() {
   loadBackground();
   state.backgroundIntervalId = window.setInterval(
     loadBackground,
-    state.backgroundSettings.intervalMinutes * 60_000
+    state.backgroundSettings.intervalMinutes * MS_PER_MINUTE
   );
 }
 
@@ -432,7 +435,7 @@ function resolveTimerState(storedTimerState) {
     };
   }
 
-  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastUpdated) / 1000));
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastUpdated) / MS_PER_SECOND));
   const adjusted = applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds);
   return {
     ...adjusted,
