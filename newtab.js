@@ -93,11 +93,8 @@ async function init() {
     ...DEFAULT_BACKGROUND_SETTINGS,
     ...(stored.backgroundSettings || {})
   };
-  state.backgroundSettings.intervalMinutes = clampNumber(
-    state.backgroundSettings.intervalMinutes,
-    1,
-    120,
-    DEFAULT_BACKGROUND_SETTINGS.intervalMinutes
+  state.backgroundSettings.intervalMinutes = normalizeBackgroundInterval(
+    state.backgroundSettings.intervalMinutes
   );
 
   const timerSnapshot = resolveTimerState(stored.timerState);
@@ -202,7 +199,7 @@ function bindEvents() {
     state.remainingSeconds = workMinutes * 60;
     stopTimer();
     await storageSet({ timerSettings: state.timerSettings });
-    await saveTimerState();
+    void saveTimerState();
     renderTimer();
   });
 
@@ -217,12 +214,7 @@ function bindEvents() {
   });
 
   elements.saveBackgroundSettings.addEventListener("click", async () => {
-    const intervalMinutes = clampNumber(
-      elements.backgroundInterval.value,
-      1,
-      120,
-      DEFAULT_BACKGROUND_SETTINGS.intervalMinutes
-    );
+    const intervalMinutes = normalizeBackgroundInterval(elements.backgroundInterval.value);
     state.backgroundSettings = { intervalMinutes };
     await storageSet({ backgroundSettings: state.backgroundSettings });
     renderBackgroundSettings();
@@ -400,6 +392,10 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, number));
 }
 
+function normalizeBackgroundInterval(value) {
+  return clampNumber(value, 1, 120, DEFAULT_BACKGROUND_SETTINGS.intervalMinutes);
+}
+
 function formatTime(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
     .toString()
@@ -445,19 +441,36 @@ function resolveTimerState(storedTimerState) {
 }
 
 function applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds) {
-  let mode = timerMode;
-  let remaining = remainingSeconds - elapsedSeconds;
+  // Convert the current segment position into a work+break cycle, add elapsed time,
+  // then use modulo arithmetic to find the current mode without per-segment looping.
+  const workSeconds = state.timerSettings.workMinutes * 60;
+  const breakSeconds = state.timerSettings.breakMinutes * 60;
+  const cycleSeconds = workSeconds + breakSeconds;
 
-  while (remaining <= 0) {
-    mode = mode === "work" ? "break" : "work";
-    const segmentSeconds =
-      mode === "work" ? state.timerSettings.workMinutes * 60 : state.timerSettings.breakMinutes * 60;
-    remaining += segmentSeconds;
+  if (cycleSeconds <= 0) {
+    return {
+      timerMode: "work",
+      remainingSeconds: workSeconds
+    };
+  }
+
+  const segmentSeconds = timerMode === "work" ? workSeconds : breakSeconds;
+  const safeRemaining = Math.min(Math.max(remainingSeconds, 0), segmentSeconds);
+  const elapsedFromSegmentStart = segmentSeconds - safeRemaining;
+  const cycleElapsed =
+    (timerMode === "work" ? elapsedFromSegmentStart : workSeconds + elapsedFromSegmentStart) + elapsedSeconds;
+  const normalizedElapsed = cycleElapsed % cycleSeconds;
+
+  if (normalizedElapsed < workSeconds) {
+    return {
+      timerMode: "work",
+      remainingSeconds: workSeconds - normalizedElapsed
+    };
   }
 
   return {
-    timerMode: mode,
-    remainingSeconds: remaining
+    timerMode: "break",
+    remainingSeconds: cycleSeconds - normalizedElapsed
   };
 }
 
