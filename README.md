@@ -13,7 +13,7 @@ These steps also work in Chromium-based browsers such as Edge or Brave.
 
 ## Permissions
 
-- `storage`: persist links, dashboard shortcuts, timer settings/state, notes, and background interval.
+- `storage`: Persist links, dashboard shortcuts, timer settings/state, notes, and background interval.
 
 ## Usage
 

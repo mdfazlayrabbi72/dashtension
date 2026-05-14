@@ -24,8 +24,8 @@ const MS_PER_MINUTE = 60_000;
 const MAX_TIMER_ELAPSED_SECONDS = 24 * 60 * 60;
 
 const BACKGROUND_SOURCES = [
-  (seed) => `https://picsum.photos/seed/${seed}/1920/1080`,
-  (seed) => `https://loremflickr.com/1920/1080/abstract?lock=${seed}`
+  (seed, size) => `https://picsum.photos/seed/${seed}/${size.width}/${size.height}`,
+  (seed, size) => `https://loremflickr.com/${size.width}/${size.height}/abstract?lock=${seed}`
 ];
 
 const state = {
@@ -319,7 +319,9 @@ function startTimer({ force = false } = {}) {
           : state.timerSettings.breakMinutes * 60;
     }
 
+    state.timerLastUpdated = Date.now();
     renderTimer();
+    persistTimerState();
   }, MS_PER_SECOND);
 }
 
@@ -340,8 +342,9 @@ function startBackgroundRotation() {
 
   const loadBackground = async () => {
     const seed = Date.now();
+    const size = getBackgroundSize();
     for (const source of BACKGROUND_SOURCES) {
-      const imageUrl = source(seed);
+      const imageUrl = source(seed, size);
       try {
         await preloadImage(imageUrl);
         setBackdropImage(imageUrl);
@@ -364,6 +367,21 @@ function startBackgroundRotation() {
 function setBackdropImage(imageUrl) {
   const gradient = "linear-gradient(140deg, rgba(8, 8, 8, 0.9), rgba(16, 16, 18, 0.76))";
   elements.backdrop.style.backgroundImage = imageUrl ? `${gradient}, url('${imageUrl}')` : gradient;
+}
+
+function getBackgroundSize() {
+  const fallback = { width: 1920, height: 1080 };
+  const screenWidth = window.screen?.width;
+  const screenHeight = window.screen?.height;
+
+  if (!screenWidth || !screenHeight) {
+    return fallback;
+  }
+
+  return {
+    width: Math.max(1024, Math.min(3840, screenWidth)),
+    height: Math.max(768, Math.min(2160, screenHeight))
+  };
 }
 
 function preloadImage(url) {
@@ -455,6 +473,7 @@ function resolveTimerState(storedTimerState) {
 function applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds) {
   // Convert remainingSeconds into elapsedFromSegmentStart (segmentSeconds - remaining),
   // add elapsedSeconds, and wrap within the work+break cycle to determine mode/remaining.
+  // Example: work=1500, break=300, remaining=300, elapsed=600 => break with 300 remaining.
   // If cycleSeconds is invalid, fall back to a work segment.
   const workSeconds = state.timerSettings.workMinutes * 60;
   const breakSeconds = state.timerSettings.breakMinutes * 60;
