@@ -9,6 +9,8 @@ Dark new tab dashboard with quick links, dashboard shortcuts, rotating backgroun
 3. Click **Load unpacked** and select the project folder.
 4. Open a new tab to view the dashboard.
 
+These steps also work in Chromium-based browsers such as Edge or Brave.
+
 ## Permissions
 
 - `storage`: persist links, dashboard shortcuts, timer settings/state, notes, and background interval.

@@ -199,7 +199,7 @@ function bindEvents() {
     state.remainingSeconds = workMinutes * 60;
     stopTimer();
     await storageSet({ timerSettings: state.timerSettings });
-    void saveTimerState();
+    persistTimerState();
     renderTimer();
   });
 
@@ -210,7 +210,7 @@ function bindEvents() {
     state.timerMode = "work";
     state.remainingSeconds = state.timerSettings.workMinutes * 60;
     renderTimer();
-    void saveTimerState();
+    persistTimerState();
   });
 
   elements.saveBackgroundSettings.addEventListener("click", async () => {
@@ -303,7 +303,7 @@ function startTimer({ force = false } = {}) {
 
   state.timerRunning = true;
   state.timerLastUpdated = Date.now();
-  void saveTimerState();
+  persistTimerState();
 
   state.timerIntervalId = window.setInterval(() => {
     state.remainingSeconds -= 1;
@@ -326,7 +326,7 @@ function stopTimer() {
   state.timerRunning = false;
   state.timerIntervalId = null;
   state.timerLastUpdated = null;
-  void saveTimerState();
+  persistTimerState();
 }
 
 function startBackgroundRotation() {
@@ -441,8 +441,9 @@ function resolveTimerState(storedTimerState) {
 }
 
 function applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds) {
-  // Convert the current segment position into a work+break cycle, add elapsed time,
-  // then use modulo arithmetic to find the current mode without per-segment looping.
+  // Convert remainingSeconds into elapsedFromSegmentStart (segmentSeconds - remaining),
+  // add elapsedSeconds, and wrap within the work+break cycle to determine mode/remaining.
+  // If cycleSeconds is invalid, fall back to a work segment.
   const workSeconds = state.timerSettings.workMinutes * 60;
   const breakSeconds = state.timerSettings.breakMinutes * 60;
   const cycleSeconds = workSeconds + breakSeconds;
@@ -485,6 +486,12 @@ function getTimerStatePayload() {
 
 async function saveTimerState() {
   await storageSet({ timerState: getTimerStatePayload() });
+}
+
+function persistTimerState() {
+  saveTimerState().catch((error) => {
+    console.warn("Failed to save timer state", error);
+  });
 }
 
 function storageGet(keys) {
