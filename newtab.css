@@ -130,6 +130,7 @@ button:hover {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
   gap: 0.6rem;
+  margin-top: 0.6rem;
 }
 
 .dashboard-grid a {
@@ -168,6 +169,26 @@ button:hover {
   gap: 0.5rem;
 }
 
+.background-settings {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) auto;
+  gap: 0.5rem;
+  align-items: end;
+  margin-bottom: 0.5rem;
+}
+
+.background-settings label {
+  display: grid;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+}
+
+.help-text {
+  margin: 0;
+  color: #9ca3af;
+  font-size: 0.85rem;
+}
+
 #notes {
   min-height: 180px;
   resize: vertical;
@@ -179,6 +200,10 @@ button:hover {
   }
 
   .timer-settings {
+    grid-template-columns: 1fr;
+  }
+
+  .background-settings {
     grid-template-columns: 1fr;
   }
 }

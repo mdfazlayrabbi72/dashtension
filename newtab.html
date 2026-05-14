@@ -26,6 +26,12 @@
 
       <section class="panel" aria-labelledby="dashboard-heading">
         <h2 id="dashboard-heading">Dashboard</h2>
+        <form id="dashboard-form" class="link-form">
+          <input id="dashboard-name" type="text" placeholder="Label" required />
+          <input id="dashboard-url" type="url" placeholder="https://example.com" required />
+          <button type="submit">Add</button>
+        </form>
+        <ul id="dashboard-list" class="links-list"></ul>
         <div id="dashboard-grid" class="dashboard-grid"></div>
       </section>
 
@@ -49,6 +55,18 @@
           <button id="timer-pause" type="button">Pause</button>
           <button id="timer-reset" type="button">Reset</button>
         </div>
+      </section>
+
+      <section class="panel" aria-labelledby="background-heading">
+        <h2 id="background-heading">Background</h2>
+        <div class="background-settings">
+          <label>
+            Change every (min)
+            <input id="background-interval" type="number" min="1" max="120" />
+          </label>
+          <button id="save-background-settings" type="button">Save</button>
+        </div>
+        <p class="help-text">Rotates through curated photo sources with a fallback.</p>
       </section>
 
       <section class="panel" aria-labelledby="notes-heading">
