@@ -1,15 +1,12 @@
-const DEFAULT_LINKS = [
+const DEFAULT_LINKS = [];
+const DEFAULT_DASHBOARD_LINKS = [
   {
     name: "Cloudflare Dashboard",
-    url: "https://dash.cloudflare.com/a2f0d6a9abee5b24237fba38245477cb/home/overview"
+    url: "https://dash.cloudflare.com/"
   },
   {
-    name: "Admin Login",
-    url: "http://192.168.0.196/admin/login"
-  },
-  {
-    name: "Xenonowledge",
-    url: "https://xenonowledge.lovable.app/"
+    name: "Namecheap Dashboard",
+    url: "https://ap.www.namecheap.com/"
   }
 ];
 
@@ -18,16 +15,31 @@ const DEFAULT_TIMER_SETTINGS = {
   breakMinutes: 5
 };
 
-const BACKGROUND_INTERVAL_MS = 60_000;
+const DEFAULT_BACKGROUND_SETTINGS = {
+  intervalMinutes: 5
+};
+
+const MS_PER_SECOND = 1_000;
+const MS_PER_MINUTE = 60_000;
+const MAX_TIMER_ELAPSED_SECONDS = 24 * 60 * 60;
+
+const BACKGROUND_SOURCES = [
+  (seed, size) => `https://picsum.photos/seed/${seed}/${size.width}/${size.height}`,
+  (seed, size) => `https://loremflickr.com/${size.width}/${size.height}/abstract?lock=${seed}`
+];
 
 const state = {
   links: [],
+  dashboardLinks: [],
   notes: "",
   timerSettings: { ...DEFAULT_TIMER_SETTINGS },
   timerMode: "work",
   remainingSeconds: DEFAULT_TIMER_SETTINGS.workMinutes * 60,
   timerRunning: false,
-  timerIntervalId: null
+  timerIntervalId: null,
+  timerLastUpdated: null,
+  backgroundSettings: { ...DEFAULT_BACKGROUND_SETTINGS },
+  backgroundIntervalId: null
 };
 
 const elements = {
@@ -36,6 +48,10 @@ const elements = {
   linkName: document.getElementById("link-name"),
   linkUrl: document.getElementById("link-url"),
   linksList: document.getElementById("links-list"),
+  dashboardForm: document.getElementById("dashboard-form"),
+  dashboardName: document.getElementById("dashboard-name"),
+  dashboardUrl: document.getElementById("dashboard-url"),
+  dashboardList: document.getElementById("dashboard-list"),
   dashboardGrid: document.getElementById("dashboard-grid"),
   workMinutes: document.getElementById("work-minutes"),
   breakMinutes: document.getElementById("break-minutes"),
@@ -45,6 +61,8 @@ const elements = {
   timerStart: document.getElementById("timer-start"),
   timerPause: document.getElementById("timer-pause"),
   timerReset: document.getElementById("timer-reset"),
+  backgroundInterval: document.getElementById("background-interval"),
+  saveBackgroundSettings: document.getElementById("save-background-settings"),
   notes: document.getElementById("notes")
 };
 
@@ -56,29 +74,60 @@ init().catch((error) => {
 });
 
 async function init() {
-  const stored = await storageGet(["links", "notes", "timerSettings"]);
+  const stored = await storageGet([
+    "links",
+    "dashboardLinks",
+    "notes",
+    "timerSettings",
+    "timerState",
+    "backgroundSettings"
+  ]);
 
   state.links = Array.isArray(stored.links) && stored.links.length ? stored.links : DEFAULT_LINKS;
+  state.dashboardLinks =
+    Array.isArray(stored.dashboardLinks) && stored.dashboardLinks.length
+      ? stored.dashboardLinks
+      : DEFAULT_DASHBOARD_LINKS;
   state.notes = typeof stored.notes === "string" ? stored.notes : "";
   state.timerSettings = {
     ...DEFAULT_TIMER_SETTINGS,
     ...(stored.timerSettings || {})
   };
-  state.remainingSeconds = state.timerSettings.workMinutes * 60;
+  state.backgroundSettings = {
+    ...DEFAULT_BACKGROUND_SETTINGS,
+    ...(stored.backgroundSettings || {})
+  };
+  state.backgroundSettings.intervalMinutes = normalizeBackgroundInterval(
+    state.backgroundSettings.intervalMinutes
+  );
+
+  const timerSnapshot = resolveTimerState(stored.timerState);
+  state.timerMode = timerSnapshot.timerMode;
+  state.remainingSeconds = timerSnapshot.remainingSeconds;
+  state.timerRunning = false;
+  state.timerLastUpdated = null;
 
   await Promise.all([
     storageSet({ links: state.links }),
+    storageSet({ dashboardLinks: state.dashboardLinks }),
     storageSet({ notes: state.notes }),
-    storageSet({ timerSettings: state.timerSettings })
+    storageSet({ timerSettings: state.timerSettings }),
+    storageSet({ backgroundSettings: state.backgroundSettings }),
+    storageSet({ timerState: getTimerStatePayload() })
   ]);
 
   bindEvents();
   renderLinks();
   renderDashboard();
   renderTimer();
+  renderBackgroundSettings();
   elements.notes.value = state.notes;
 
   startBackgroundRotation();
+
+  if (timerSnapshot.timerRunning) {
+    startTimer({ force: true });
+  }
 }
 
 function bindEvents() {
@@ -96,7 +145,6 @@ function bindEvents() {
 
     elements.linkForm.reset();
     renderLinks();
-    renderDashboard();
   });
 
   elements.linksList.addEventListener("click", async (event) => {
@@ -113,6 +161,37 @@ function bindEvents() {
     state.links.splice(index, 1);
     await storageSet({ links: state.links });
     renderLinks();
+  });
+
+  elements.dashboardForm.addEventListener("submit", async (event) => {
+    event.preventDefault();
+    const name = elements.dashboardName.value.trim();
+    const url = normalizeUrl(elements.dashboardUrl.value.trim());
+
+    if (!name || !url) {
+      return;
+    }
+
+    state.dashboardLinks.push({ name, url });
+    await storageSet({ dashboardLinks: state.dashboardLinks });
+
+    elements.dashboardForm.reset();
+    renderDashboard();
+  });
+
+  elements.dashboardList.addEventListener("click", async (event) => {
+    const button = event.target.closest("button[data-index]");
+    if (!button) {
+      return;
+    }
+
+    const index = Number(button.dataset.index);
+    if (!Number.isInteger(index)) {
+      return;
+    }
+
+    state.dashboardLinks.splice(index, 1);
+    await storageSet({ dashboardLinks: state.dashboardLinks });
     renderDashboard();
   });
 
@@ -124,6 +203,7 @@ function bindEvents() {
     state.remainingSeconds = workMinutes * 60;
     stopTimer();
     await storageSet({ timerSettings: state.timerSettings });
+    persistTimerState();
     renderTimer();
   });
 
@@ -134,6 +214,15 @@ function bindEvents() {
     state.timerMode = "work";
     state.remainingSeconds = state.timerSettings.workMinutes * 60;
     renderTimer();
+    persistTimerState();
+  });
+
+  elements.saveBackgroundSettings.addEventListener("click", async () => {
+    const intervalMinutes = normalizeBackgroundInterval(elements.backgroundInterval.value);
+    state.backgroundSettings = { intervalMinutes };
+    await storageSet({ backgroundSettings: state.backgroundSettings });
+    renderBackgroundSettings();
+    startBackgroundRotation();
   });
 
   let notesSaveTimeoutId;
@@ -168,9 +257,25 @@ function renderLinks() {
 }
 
 function renderDashboard() {
+  elements.dashboardList.innerHTML = "";
   elements.dashboardGrid.innerHTML = "";
 
-  state.links.forEach((link) => {
+  state.dashboardLinks.forEach((link, index) => {
+    const item = document.createElement("li");
+    const anchor = document.createElement("a");
+    anchor.href = link.url;
+    anchor.textContent = link.name;
+    anchor.target = "_blank";
+    anchor.rel = "noopener noreferrer";
+
+    const removeButton = document.createElement("button");
+    removeButton.type = "button";
+    removeButton.dataset.index = String(index);
+    removeButton.textContent = "Remove";
+
+    item.append(anchor, removeButton);
+    elements.dashboardList.appendChild(item);
+
     const card = document.createElement("a");
     card.href = link.url;
     card.target = "_blank";
@@ -187,12 +292,23 @@ function renderTimer() {
   elements.timerDisplay.textContent = formatTime(state.remainingSeconds);
 }
 
-function startTimer() {
-  if (state.timerRunning) {
+function renderBackgroundSettings() {
+  elements.backgroundInterval.value = state.backgroundSettings.intervalMinutes;
+}
+
+function startTimer({ force = false } = {}) {
+  if (state.timerRunning && !force) {
     return;
   }
 
+  if (state.timerIntervalId) {
+    window.clearInterval(state.timerIntervalId);
+  }
+
   state.timerRunning = true;
+  state.timerLastUpdated = Date.now();
+  persistTimerState();
+
   state.timerIntervalId = window.setInterval(() => {
     state.remainingSeconds -= 1;
     if (state.remainingSeconds <= 0) {
@@ -203,8 +319,10 @@ function startTimer() {
           : state.timerSettings.breakMinutes * 60;
     }
 
+    state.timerLastUpdated = Date.now();
     renderTimer();
-  }, 1000);
+    persistTimerState();
+  }, MS_PER_SECOND);
 }
 
 function stopTimer() {
@@ -213,24 +331,57 @@ function stopTimer() {
   }
   state.timerRunning = false;
   state.timerIntervalId = null;
+  state.timerLastUpdated = null;
+  persistTimerState();
 }
 
 function startBackgroundRotation() {
+  if (state.backgroundIntervalId) {
+    window.clearInterval(state.backgroundIntervalId);
+  }
+
   const loadBackground = async () => {
-    const imageUrl = `https://source.unsplash.com/1920x1080/?dark,night,abstract&sig=${Date.now()}`;
-    try {
-      await preloadImage(imageUrl);
-      elements.backdrop.style.backgroundImage =
-        `linear-gradient(140deg, rgba(8, 8, 8, 0.9), rgba(16, 16, 18, 0.76)), url('${imageUrl}')`;
-    } catch (error) {
-      console.warn("Could not load background image", error);
-      elements.backdrop.style.backgroundImage =
-        "linear-gradient(140deg, rgba(8, 8, 8, 0.9), rgba(16, 16, 18, 0.76))";
+    const seed = Date.now();
+    const size = getBackgroundSize();
+    for (const source of BACKGROUND_SOURCES) {
+      const imageUrl = source(seed, size);
+      try {
+        await preloadImage(imageUrl);
+        setBackdropImage(imageUrl);
+        return;
+      } catch (error) {
+        console.warn("Could not load background image", error);
+      }
     }
+
+    setBackdropImage();
   };
 
   loadBackground();
-  window.setInterval(loadBackground, BACKGROUND_INTERVAL_MS);
+  state.backgroundIntervalId = window.setInterval(
+    loadBackground,
+    state.backgroundSettings.intervalMinutes * MS_PER_MINUTE
+  );
+}
+
+function setBackdropImage(imageUrl) {
+  const gradient = "linear-gradient(140deg, rgba(8, 8, 8, 0.9), rgba(16, 16, 18, 0.76))";
+  elements.backdrop.style.backgroundImage = imageUrl ? `${gradient}, url('${imageUrl}')` : gradient;
+}
+
+function getBackgroundSize() {
+  const fallback = { width: 1920, height: 1080 };
+  const screenWidth = window.screen?.width;
+  const screenHeight = window.screen?.height;
+
+  if (!screenWidth || !screenHeight) {
+    return fallback;
+  }
+
+  return {
+    width: Math.max(1024, Math.min(3840, screenWidth)),
+    height: Math.max(768, Math.min(2160, screenHeight))
+  };
 }
 
 function preloadImage(url) {
@@ -263,12 +414,115 @@ function clampNumber(value, min, max, fallback) {
   return Math.min(max, Math.max(min, number));
 }
 
+function normalizeBackgroundInterval(value) {
+  return clampNumber(value, 1, 120, DEFAULT_BACKGROUND_SETTINGS.intervalMinutes);
+}
+
 function formatTime(totalSeconds) {
   const minutes = Math.floor(totalSeconds / 60)
     .toString()
     .padStart(2, "0");
   const seconds = (totalSeconds % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
+}
+
+function resolveTimerState(storedTimerState) {
+  const fallback = {
+    timerMode: "work",
+    remainingSeconds: state.timerSettings.workMinutes * 60,
+    timerRunning: false
+  };
+
+  if (!storedTimerState || typeof storedTimerState !== "object") {
+    return fallback;
+  }
+
+  const timerMode = storedTimerState.timerMode === "break" ? "break" : "work";
+  const remainingSeconds = Number.isFinite(storedTimerState.remainingSeconds)
+    ? storedTimerState.remainingSeconds
+    : fallback.remainingSeconds;
+  const timerRunning = Boolean(storedTimerState.timerRunning);
+  const lastUpdated = Number.isFinite(storedTimerState.lastUpdated)
+    ? storedTimerState.lastUpdated
+    : null;
+
+  if (!timerRunning || !lastUpdated) {
+    return {
+      timerMode,
+      remainingSeconds,
+      timerRunning: false
+    };
+  }
+
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastUpdated) / MS_PER_SECOND));
+  if (elapsedSeconds > MAX_TIMER_ELAPSED_SECONDS) {
+    return {
+      timerMode: "work",
+      remainingSeconds: state.timerSettings.workMinutes * 60,
+      timerRunning: false
+    };
+  }
+
+  const adjusted = applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds);
+  return {
+    ...adjusted,
+    timerRunning: true
+  };
+}
+
+function applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds) {
+  // Convert remainingSeconds into elapsedFromSegmentStart (segmentSeconds - remaining),
+  // add elapsedSeconds, and wrap within the work+break cycle to determine mode/remaining.
+  // Example: work=1500, break=300, remaining=300, elapsed=600 => break with 300 remaining.
+  // If cycleSeconds is invalid, fall back to a work segment.
+  const workSeconds = state.timerSettings.workMinutes * 60;
+  const breakSeconds = state.timerSettings.breakMinutes * 60;
+  const cycleSeconds = workSeconds + breakSeconds;
+
+  if (cycleSeconds <= 0) {
+    return {
+      timerMode: "work",
+      remainingSeconds: workSeconds
+    };
+  }
+
+  const segmentSeconds = timerMode === "work" ? workSeconds : breakSeconds;
+  const safeRemaining = Math.min(Math.max(remainingSeconds, 0), segmentSeconds);
+  const elapsedFromSegmentStart = segmentSeconds - safeRemaining;
+  const cycleElapsed =
+    (timerMode === "work" ? elapsedFromSegmentStart : workSeconds + elapsedFromSegmentStart) + elapsedSeconds;
+  const normalizedElapsed = cycleElapsed % cycleSeconds;
+
+  if (normalizedElapsed < workSeconds) {
+    return {
+      timerMode: "work",
+      remainingSeconds: workSeconds - normalizedElapsed
+    };
+  }
+
+  return {
+    timerMode: "break",
+    remainingSeconds: cycleSeconds - normalizedElapsed
+  };
+}
+
+function getTimerStatePayload() {
+  return {
+    timerMode: state.timerMode,
+    remainingSeconds: state.remainingSeconds,
+    timerRunning: state.timerRunning,
+    lastUpdated: state.timerLastUpdated
+  };
+}
+
+async function saveTimerState() {
+  await storageSet({ timerState: getTimerStatePayload() });
+}
+
+function persistTimerState() {
+  saveTimerState().catch((error) => {
+    console.warn("Failed to save timer state", error);
+  });
 }
 
 function storageGet(keys) {
