@@ -27,7 +27,8 @@ const state = {
   timerMode: "work",
   remainingSeconds: DEFAULT_TIMER_SETTINGS.workMinutes * 60,
   timerRunning: false,
-  timerIntervalId: null
+  timerIntervalId: null,
+  notesSaveTimeoutId: null
 };
 
 const elements = {
@@ -66,11 +67,7 @@ async function init() {
   };
   state.remainingSeconds = state.timerSettings.workMinutes * 60;
 
-  await Promise.all([
-    storageSet({ links: state.links }),
-    storageSet({ notes: state.notes }),
-    storageSet({ timerSettings: state.timerSettings })
-  ]);
+  await storageSet({ links: state.links, notes: state.notes, timerSettings: state.timerSettings });
 
   bindEvents();
   renderLinks();
@@ -136,13 +133,17 @@ function bindEvents() {
     renderTimer();
   });
 
-  let notesSaveTimeoutId;
   elements.notes.addEventListener("input", () => {
-    clearTimeout(notesSaveTimeoutId);
-    notesSaveTimeoutId = setTimeout(async () => {
+    clearTimeout(state.notesSaveTimeoutId);
+    state.notesSaveTimeoutId = setTimeout(async () => {
       state.notes = elements.notes.value;
       await storageSet({ notes: state.notes });
     }, 300);
+  });
+
+  window.addEventListener("beforeunload", () => {
+    clearTimeout(state.notesSaveTimeoutId);
+    stopTimer();
   });
 }
 
@@ -264,10 +265,11 @@ function clampNumber(value, min, max, fallback) {
 }
 
 function formatTime(totalSeconds) {
-  const minutes = Math.floor(totalSeconds / 60)
+  const safeSeconds = Math.max(0, totalSeconds);
+  const minutes = Math.floor(safeSeconds / 60)
     .toString()
     .padStart(2, "0");
-  const seconds = (totalSeconds % 60).toString().padStart(2, "0");
+  const seconds = (safeSeconds % 60).toString().padStart(2, "0");
   return `${minutes}:${seconds}`;
 }
 

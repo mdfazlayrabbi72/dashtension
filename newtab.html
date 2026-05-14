@@ -17,8 +17,14 @@
       <section class="panel" aria-labelledby="links-heading">
         <h2 id="links-heading">Links</h2>
         <form id="link-form" class="link-form">
-          <input id="link-name" type="text" placeholder="Label" required />
-          <input id="link-url" type="url" placeholder="https://example.com" required />
+          <input id="link-name" type="text" placeholder="Label" aria-label="Link label" required />
+          <input
+            id="link-url"
+            type="url"
+            placeholder="https://example.com"
+            aria-label="Link URL"
+            required
+          />
           <button type="submit">Add</button>
         </form>
         <ul id="links-list" class="links-list"></ul>
@@ -53,7 +59,7 @@
 
       <section class="panel" aria-labelledby="notes-heading">
         <h2 id="notes-heading">Notes</h2>
-        <textarea id="notes" placeholder="Write your notes here..."></textarea>
+        <textarea id="notes" aria-labelledby="notes-heading" placeholder="Write your notes here..."></textarea>
       </section>
     </main>
 
