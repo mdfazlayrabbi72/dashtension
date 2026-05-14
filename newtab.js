@@ -21,10 +21,11 @@ const DEFAULT_BACKGROUND_SETTINGS = {
 
 const MS_PER_SECOND = 1_000;
 const MS_PER_MINUTE = 60_000;
+const MAX_TIMER_ELAPSED_SECONDS = 24 * 60 * 60;
 
 const BACKGROUND_SOURCES = [
-  (seed) => `https://source.unsplash.com/1920x1080/?dark,night,abstract&sig=${seed}`,
-  (seed) => `https://picsum.photos/1920/1080?random=${seed}`
+  (seed) => `https://picsum.photos/seed/${seed}/1920/1080`,
+  (seed) => `https://loremflickr.com/1920/1080/abstract?lock=${seed}`
 ];
 
 const state = {
@@ -436,6 +437,14 @@ function resolveTimerState(storedTimerState) {
   }
 
   const elapsedSeconds = Math.max(0, Math.floor((Date.now() - lastUpdated) / MS_PER_SECOND));
+  if (elapsedSeconds > MAX_TIMER_ELAPSED_SECONDS) {
+    return {
+      timerMode: "work",
+      remainingSeconds: state.timerSettings.workMinutes * 60,
+      timerRunning: false
+    };
+  }
+
   const adjusted = applyElapsedTimer(timerMode, remainingSeconds, elapsedSeconds);
   return {
     ...adjusted,
